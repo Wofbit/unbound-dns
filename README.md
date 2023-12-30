@@ -1,4 +1,4 @@
-# unbound-config
+# unbound-dns-config
 
 Configuration & Management Of [NLnet Labs](https://www.nlnetlabs.nl/)' Unbound DNS Resolver
 
