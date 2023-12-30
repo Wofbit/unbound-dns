@@ -7,7 +7,7 @@
 export LC_ALL=C
 
 # unbound-config script version
-version="1.9"
+version="1.17.0"
 
 # unbound-config repository variables
 master_repo_path="https://github.com/Wofbit/unbound-dns"
@@ -19,7 +19,7 @@ script_repo_path="$master_repo_path/script"
 root_hints_dir="/var/lib/unbound"
 
 # Current unbound-config Unbound binary version
-unbound_version="1.14.1"
+unbound_version="1.19.0"
 
 # Unbound variables
 unbound_dir="/usr/sbin"
@@ -50,7 +50,7 @@ obnoxious_header() {
 }
 
 # "Abandon all hope, all ye who enter here."
-#  Dante Alighieri - Inferno, 1320
+#  Zero Says - Wofbit, 430
 
 # User confirmation handler using whiptail
 confirm_action() {
