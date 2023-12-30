@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 # unbound-config
-# saint-lascivious (Hayden Pearce) 2021
-# saint@sainternet.xyz
+# zero-says (Cyrus Mbitao) 2023
+# cyrus.mbitao@wofbit.co.ke
 
 export LC_ALL=C
 
@@ -10,7 +10,7 @@ export LC_ALL=C
 version="1.9"
 
 # unbound-config repository variables
-master_repo_path="https://raw.githubusercontent.com/saint-lascivious/unbound-config/master"
+master_repo_path="https://github.com/Wofbit/unbound-dns"
 # These don't really need to exist, they just make functions more obvious
 binary_repo_path="$master_repo_path/binaries"
 config_repo_path="$master_repo_path/configs"
@@ -1162,8 +1162,8 @@ esac
 
 # Only print full help information if a help option is passed
 if [[ -z "$1" ]]; then
-    # "Yo dawg, I heard you liked help. So we pimped your help, with some help!"
-    # Xzibit (Alvin Nathaniel Joiner) - Probably never
+    # "Yo Bro !! Heard you needed help. So we pimped it with some help!"
+    # Wofbit Networks Ltd!!
     echo -e "unbound-config v$version requires one or more flags to operate"
     echo -e "Use 'unbound-config --help' for detailed help information"
     exit 0
