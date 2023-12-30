@@ -9,15 +9,15 @@ Originally designed purely for personal use, unbound-config is a project that ha
 
 Three shall be the number thou shalt count, and the number of components in this repository shall be three. Four shalt thou not count, neither count thou two, excepting that thou then proceed to three. Five is right out!
 
-* [Modulur Unbound Configuration Files](https://github.com/Wofbit/unbound-dns/tree/master/configs)
+* [Modulur Unbound Configuration Files](https://github.com/Wofbit/unbound-dns/tree/mainconfigs)
 
 A range of modular configuration files is offered including a base.conf (required), and multiple optional configuration files adding or defining additional functionality. Intended to serve as a working basis for further configuration while providing reasonably sane defaults, many values supplied are in fact current default values. Constant expirimentation in this area and the want for a ulitility to assist with backup and restore of different configuration profiles during testing lead to the creation and adaptation of the following...
 
-* [Utility Script](https://github.com/Wofbit/unbound-dns/tree/master/script)
+* [Utility Script](https://github.com/Wofbit/unbound-dns/tree/main/script)
 
 Perhaps confusingly named, unbound-config is also a general management and utility script for Unbound. This utility offers a range of functions including creation, listing, and restoration of Unbound configuration backups, and the ability to install a set of recommended unbound-config configuration files. This part of the project started from an installtion script, that was dumb as a sack of rocks, originally packaged exclusively with the following...
 
-* [Unbound Binaries](https://github.com/Wofbit/unbound-dns/tree/master/binaries)
+* [Unbound Binaries](https://github.com/Wofbit/unbound-dns/tree/mainbinaries)
 
 Finding limitation in the Unbound binaries distributed via various system package managers, I found myself compiling from source regularly. I would also regularly find users of this project and others frustrated by either the lack of modules, updates, or both in their system package manager's Unbound binaries eventually leading to my distributing a set of periodically updated Unbound binaries compiled from the latest Unbound via this repository.
 
@@ -150,7 +150,7 @@ Redis Cache DB
 
 Notes: Requires [module-config.conf](https://github.com/Wofbit/unbound-dns/configs/module-config.conf)).
 
-Unbound must be compiled with both --with-libhiredis and --enable-cachedb flags enabled. Check if your version supports this with 'unbound -V', it probably doesn't (but [mine do](https://github.com/Wofbit/unbound-dns/tree/master/binaries)).
+Unbound must be compiled with both --with-libhiredis and --enable-cachedb flags enabled. Check if your version supports this with 'unbound -V', it probably doesn't (but [mine do](https://github.com/Wofbit/unbound-dns/tree/mainbinaries)).
 
 See notes on additional system configuration below.
 ```
