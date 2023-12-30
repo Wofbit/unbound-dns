@@ -9,7 +9,7 @@ Originally designed purely for personal use, unbound-config is a project that ha
 
 Three shall be the number thou shalt count, and the number of components in this repository shall be three. Four shalt thou not count, neither count thou two, excepting that thou then proceed to three. Five is right out!
 
-* [Modulur Unbound Configuration Files](https://github.com/Wofbit/unbound-dns/tree/mainconfigs)
+* [Modulur Unbound Configuration Files](https://github.com/Wofbit/unbound-dns/tree/main/configs)
 
 A range of modular configuration files is offered including a base.conf (required), and multiple optional configuration files adding or defining additional functionality. Intended to serve as a working basis for further configuration while providing reasonably sane defaults, many values supplied are in fact current default values. Constant expirimentation in this area and the want for a ulitility to assist with backup and restore of different configuration profiles during testing lead to the creation and adaptation of the following...
 
@@ -17,7 +17,7 @@ A range of modular configuration files is offered including a base.conf (require
 
 Perhaps confusingly named, unbound-config is also a general management and utility script for Unbound. This utility offers a range of functions including creation, listing, and restoration of Unbound configuration backups, and the ability to install a set of recommended unbound-config configuration files. This part of the project started from an installtion script, that was dumb as a sack of rocks, originally packaged exclusively with the following...
 
-* [Unbound Binaries](https://github.com/Wofbit/unbound-dns/tree/mainbinaries)
+* [Unbound Binaries](https://github.com/Wofbit/unbound-dns/tree/main/binaries)
 
 Finding limitation in the Unbound binaries distributed via various system package managers, I found myself compiling from source regularly. I would also regularly find users of this project and others frustrated by either the lack of modules, updates, or both in their system package manager's Unbound binaries eventually leading to my distributing a set of periodically updated Unbound binaries compiled from the latest Unbound via this repository.
 
@@ -28,7 +28,7 @@ Finding limitation in the Unbound binaries distributed via various system packag
 
 Backup and remove any existing Unbound configuration using the unbound-config utility script.
 ```
-wget https://github.com/Wofbit/unbound-dns/script/unbound-config -P /tmp && chmod +x /tmp/unbound-config
+wget https://github.com/Wofbit/unbound-dns/tree/main/script/unbound-config -P /tmp && chmod +x /tmp/unbound-config
 ```
 You will be prompted to make a backup of your existing configuration before the current configuration is able to be removed.
 ```
