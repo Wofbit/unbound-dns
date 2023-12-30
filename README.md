@@ -9,15 +9,15 @@ Originally designed purely for personal use, unbound-config is a project that ha
 
 Three shall be the number thou shalt count, and the number of components in this repository shall be three. Four shalt thou not count, neither count thou two, excepting that thou then proceed to three. Five is right out!
 
-* [Modulur Unbound Configuration Files](https://github.com/zerosays/unbound-dns/tree/master/configs)
+* [Modulur Unbound Configuration Files](https://github.com/Wofbit/unbound-dns/tree/master/configs)
 
 A range of modular configuration files is offered including a base.conf (required), and multiple optional configuration files adding or defining additional functionality. Intended to serve as a working basis for further configuration while providing reasonably sane defaults, many values supplied are in fact current default values. Constant expirimentation in this area and the want for a ulitility to assist with backup and restore of different configuration profiles during testing lead to the creation and adaptation of the following...
 
-* [Utility Script](https://github.com/zerosays/unbound-dns/tree/master/script)
+* [Utility Script](https://github.com/Wofbit/unbound-dns/tree/master/script)
 
 Perhaps confusingly named, unbound-config is also a general management and utility script for Unbound. This utility offers a range of functions including creation, listing, and restoration of Unbound configuration backups, and the ability to install a set of recommended unbound-config configuration files. This part of the project started from an installtion script, that was dumb as a sack of rocks, originally packaged exclusively with the following...
 
-* [Unbound Binaries](https://github.com/zerosays/unbound-dns/tree/master/binaries)
+* [Unbound Binaries](https://github.com/Wofbit/unbound-dns/tree/master/binaries)
 
 Finding limitation in the Unbound binaries distributed via various system package managers, I found myself compiling from source regularly. I would also regularly find users of this project and others frustrated by either the lack of modules, updates, or both in their system package manager's Unbound binaries eventually leading to my distributing a set of periodically updated Unbound binaries compiled from the latest Unbound via this repository.
 
@@ -28,7 +28,7 @@ Finding limitation in the Unbound binaries distributed via various system packag
 
 Backup and remove any existing Unbound configuration using the unbound-config utility script.
 ```
-wget https://github.com/zerosays/unbound-dns/master/script/unbound-config -P /tmp && chmod +x /tmp/unbound-config
+wget https://github.com/Wofbit/unbound-dns/master/script/unbound-config -P /tmp && chmod +x /tmp/unbound-config
 ```
 You will be prompted to make a backup of your existing configuration before the current configuration is able to be removed.
 ```
@@ -40,7 +40,7 @@ Note: You will be prompted to install any unmet dependencies as they are require
 
 Base (Required)
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/base.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/base.conf
 ```
 
 * Download Additonal Config Fragments As Required
@@ -49,63 +49,63 @@ Note: Recommended configuration fragments are marked as such.
 
 Access Control
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/access-control.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/access-control.conf
 ```
 Automatic Interface
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/auto-interface.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/auto-interface.conf
 ```
 Buffers (Recommended)
 
 Note: See notes on additional system configuration below.
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/buffers.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/buffers.conf
 ```
 Caches (Recommended)
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/caches.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/caches.conf
 ```
 Cache TTL
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/cache-ttl.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/cache-ttl.conf
 ```
 Address Capitalization Randomization (Recommended)
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/caps-for-id.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/caps-for-id.conf
 ```
 Deny ANY Requests
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/deny-any.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/deny-any.conf
 ```
 DNS64
 
 Note: Requires a NAT64 gateway, you probably don't have one.
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/dns64.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/dns64.conf
 ```
 Disable Logging
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/disable-logging.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/disable-logging.conf
 ```
 EDNS Buffer
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/edns-buffer.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/edns-buffer.conf
 ```
 Fast Servers
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/fast-server.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/fast-server.conf
 ```
 Fetch Policy
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/fetch-policy.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/fetch-policy.conf
 ```
 Hardening (Recommended)
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/hardening.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/hardening.conf
 ```
 IPv6
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/ipv6.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/ipv6.conf
 ```
 Libevent (Recommended)
 
@@ -114,43 +114,43 @@ Note: Requires installation of libevent-dev on the Unbound host.
 sudo apt install libevent-dev
 ```
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/libevent.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/libevent.conf
 ```
 Local Records
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/local-records.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/local-records.conf
 ```
 Module Config
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/module-config.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/module-config.conf
 ```
 Multithreaded UDP
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/multithreaded-udp.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/multithreaded-udp.conf
 ```
 Multithreading (Recommended)
 
 Note: For multi-core machines number of threads equals number of cores is a good rule, should be a factor of two.
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/multithreading.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/multithreading.conf
 ```
 Prefetch (Recommended)
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/prefetch.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/prefetch.conf
 ```
 Private Address Ranges (Recommended)
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/private-ranges.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/private-ranges.conf
 ```
 Rate Limiting
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/rate-limiting.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/rate-limiting.conf
 ```
 Redis Cache DB
 
-Notes: Requires [module-config.conf](https://github.com/zerosays/unbound-dns/master/configs/module-config.conf)).
+Notes: Requires [module-config.conf](https://github.com/Wofbit/unbound-dns/master/configs/module-config.conf)).
 
-Unbound must be compiled with both --with-libhiredis and --enable-cachedb flags enabled. Check if your version supports this with 'unbound -V', it probably doesn't (but [mine do](https://github.com/zerosays/unbound-dns/tree/master/binaries)).
+Unbound must be compiled with both --with-libhiredis and --enable-cachedb flags enabled. Check if your version supports this with 'unbound -V', it probably doesn't (but [mine do](https://github.com/Wofbit/unbound-dns/tree/master/binaries)).
 
 See notes on additional system configuration below.
 ```
@@ -178,29 +178,29 @@ sudo sed -i '/logfile \/var\/log\/redis\/redis-server.log/s/^/#/g' $file
 sudo systemctl restart redis
 ```
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/redis.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/redis.conf
 ```
 Remote Control
 
 Note: Remember to run unbound-control-setup on the Unbound host before trying to use unbound-control.
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/remote-control.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/remote-control.conf
 ```
 Root Hints
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/root-hints.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/root-hints.conf
 ```
 Serve Expired Records
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/serve-expired-records.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/serve-expired-records.conf
 ```
 Server Identity
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/server-identity.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/server-identity.conf
 ```
 Verbosity (Recommended)
 ```
-sudo wget https://github.com/zerosays/unbound-dns/master/configs/verbosity.conf
+sudo wget https://github.com/Wofbit/unbound-dns/master/configs/verbosity.conf
 ```
 
 * Restart unbound
@@ -219,7 +219,7 @@ Install base.conf and recommended config fragments using the unbound-config util
 
 Note: Backup and removal of any existing Unbound configuration is handled semi-automatically, you will be prompted for confirmation.
 ```
-wget https://github.com/zerosays/unbound-dns/master/script/unbound-config -P /tmp && chmod +x /tmp/unbound-config
+wget https://github.com/Wofbit/unbound-dns/master/script/unbound-config -P /tmp && chmod +x /tmp/unbound-config
 ```
 ```
 /tmp/unbound-config --config-recommended
@@ -263,7 +263,7 @@ Probably, yes.
 
 Download and install unbound-config Unbound binaries using the unbound-config utility script.
 ```
-wget https://github.com/zerosays/unbound-dns/master/script/unbound-config -P /tmp && chmod +x /tmp/unbound-config
+wget https://github.com/Wofbit/unbound-dns/master/script/unbound-config -P /tmp && chmod +x /tmp/unbound-config
 ```
 ```
 /tmp/unbound-config --install-unbound
