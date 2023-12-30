@@ -1,0 +1,1170 @@
+#!/usr/bin/env bash
+
+# unbound-config
+# saint-lascivious (Hayden Pearce) 2021
+# saint@sainternet.xyz
+
+export LC_ALL=C
+
+# unbound-config script version
+version="1.9"
+
+# unbound-config repository variables
+master_repo_path="https://raw.githubusercontent.com/saint-lascivious/unbound-config/master"
+# These don't really need to exist, they just make functions more obvious
+binary_repo_path="$master_repo_path/binaries"
+config_repo_path="$master_repo_path/configs"
+script_repo_path="$master_repo_path/script"
+# Location for root.hints file
+root_hints_dir="/var/lib/unbound"
+
+# Current unbound-config Unbound binary version
+unbound_version="1.14.1"
+
+# Unbound variables
+unbound_dir="/usr/sbin"
+unbound_config_dir="/etc/unbound/unbound.conf.d"
+# Bizarrely not the same path as any other unbound binary
+unbound_host_dir="/usr/bin"
+
+# Assume a posix /tmp exists
+# env vars like $TEMP and friends may be stolen by libpam-tempdir or any other
+# private temp system, even /tmp is difficult to predict
+temp_dir="/tmp"
+
+# Whiptail dialogue box proportions
+# unbound-config assumes an 80 wide terminal, 72 wide boxes just look nice
+height="12"
+width="72"
+
+# If you know me, you know we have to have one
+obnoxious_header() {
+    echo -e "\e[31;1m               _                           _                       __ _         "
+    echo -e "   _   _ _ __ | |__   ___  _   _ _ __   __| |      ___ ___  _ __  / _(_) __ _   "
+    echo -e "  | | | | '_ \\| '_ \ / _ \| | | | '_ \\ / _\` |____ / __/ _ \\| '_ \\| |_| |/ _\` |  "
+    echo -e "  | |_| | | | | |_) | (_) | |_| | | | | (_| |____| (_| (_) | | | |  _| | (_| |  "
+    echo -e "   \__,_|_| |_|_.__/ \___/ \__,_|_| |_|\__,_|     \___\___/|_| |_|_| |_|\__, |  "
+    echo -e "                                                                        |___/   \e[0m"
+    echo -e " v$version"
+    echo -e "         Configuration & Management Of NLnet Labs' Unbound DNS Resolver\n"
+}
+
+# "Abandon all hope, all ye who enter here."
+#  Dante Alighieri - Inferno, 1320
+
+# User confirmation handler using whiptail
+confirm_action() {
+    package="whiptail"
+    test_package
+    # Use whiptail to create a confirmation dialogue box of $height and $width
+    # --defaultno does exactly what it sounds like it does
+    whiptail --title "$title_text" --backtitle "unbound-config v$version" --yesno --defaultno "Are you sure you want to $action_text?" "$height" "$width"
+    # Check which response we got
+    response="$?"
+    case "$response" in
+        0 )
+            # We required explicit confirmation and we got it
+            ;;
+        1 )
+            # We required explicit confirmation and we didn't get it
+            echo -e "Exiting unbound-config"
+            exit 0 ;;
+        255 )
+            # Abandon ship
+            echo -e "Escape key was pressed"
+            exit 1 ;;
+    esac
+}
+
+# Much like confirm_action, but for general messages that need to be seen
+message_box() {
+    package="whiptail"
+    test_package
+    # Use whiptail to create a message dialogue box of $height and $width
+    # --msgbox is useful when we want to display a message and confirm the user
+    # saw it without requiring explicit yes/no confirmation
+    whiptail --title "$title_text" --backtitle "unbound-config v$version" --msgbox "$message_text" "$height" "$width"
+}
+
+# Backup the current Unbound configuration if it exists
+backup_config() {
+    # Date format breaks down to YYYYMMDDHHMM
+    # Sortable universal datetime
+    date_format="$(date +%Y%m%d%H%M)"
+    # Sanitise user input backup IDs
+    # Split out legal_chars function to shut shellcheck.net up
+    legal_chars="$(sed -e 's/[^A-Za-z0-9._-]/_/g')"
+    input_format="$(echo "$2" | $legal_chars)"
+    launch_dir="$(pwd)"
+    if [[ -d "$unbound_config_dir" ]]; then
+        # There is an Unbound config directory, try check if it is empty or not
+        if [[ "$(ls -A $unbound_config_dir)" ]]; then
+            package="tar"
+            test_package
+            # Create the backup directory if it does not already exist
+            if [[ ! -d "$unbound_config_dir-backup" ]]; then
+                echo -e "Creating unbound-config backup directory ..."
+                mkdir "$unbound_config_dir-backup"
+                echo -e "\t- Done\n"
+            fi
+            # Switch to the backup directory
+            cd "$unbound_config_dir-backup" || return
+            # Make a .tar.gz archive of the current Unbound configuration
+            echo -e "Backing up the current Unbound configuration ...\n"
+            # Allow an optional string to be passed to be used as backup ID,
+            # default to the current date and time if no value is given
+            if [[ -z "$2" ]]; then
+                archive_name="$date_format.tar.gz"
+            else
+                if [[ "$2" == "--rfc3339" ]]; then
+                    # Optional rfc3339 compliant backup IDs
+                    # Date format breaks down to YYYY-MM-DDTHH:MM:SS±00:00
+                    # [[full-date][T][full-time][UTC offset]]
+                    echo -e "[INFO] --rfc3339 option passed\n"
+                    date_format="$(date +%Y-%m-%dT%H:%M:S%:z)"
+                    archive_name="$date_format.tar.gz"
+                else
+                    # get rekt localisation
+                    # legal characters are "a-z A-Z 0-9 . _ -", anything else
+                    # is replaced by an underscore
+                    archive_name="$input_format.tar.gz"
+                fi
+            fi
+            # Strange tar dance to make an archive of just the target
+            # directory contents without a skeleton parent directory structure
+            # --force-local is required to disable tar's obscure remote tape
+            # drive feature when backup IDs contain colons (--rfc3339)
+            tar -czvf "$archive_name" -C "$unbound_config_dir" . --force-local
+            echo -e "\n\t- Done\n"
+            # Switch back to where we launched from
+            cd "$launch_dir" || return
+            echo -e "Backup saved to a .tar.gz archive located within"
+            echo -e "$unbound_config_dir-backup"
+            echo -e "\nThe default backup ID naming convention is YYYYMMDDHHMM"
+        else
+            # The Unbound configuration directory exists but we think
+            # it is empty so there is nothing to back up
+            echo -e "No Unbound configuration found in"
+            echo -e "$unbound_config_dir"
+            echo -e "\nCannot backup Unbound configuration, no configuration to backup"
+        fi
+    else
+        # There is no Unbound configuartion directory so there is nothing
+        # to archive
+        echo -e "No Unbound configuration directory exists at"
+        echo -e "$unbound_config_dir"
+        echo -e "\nCannot backup Unbound configuration, no configuration directory"
+    fi
+}
+
+# Offer to remove the current Unbound configuration if it exists but force
+# a backup flow in order to do it
+remove_config() {
+    action_text="remove Unbound's current configuration"
+    if [[ -d "$unbound_config_dir-backup" ]]; then
+        # A backup directory exists, check if there are any archives
+        if [[ "$(ls -A $unbound_config_dir-backup/*.tar.gz)" ]]; then
+            # We think there is at least one archive in it
+            if [[ -d "$unbound_config_dir" ]]; then
+                # An Unbound configuration directory exists
+                if [[ "$(ls -A $unbound_config_dir)" ]]; then
+                    # A config probably exists
+                    title_text="This command will $action_text"
+                    confirm_action
+                    echo -e "Removing current Unbound configuration ..."
+                    # It's probably safe to clear the configuration directory
+                    # Make sure the wildcard doesn't expand to anything spicy
+                    rm -fr ${unbound_config_dir/*}
+                    echo -e "\t- Done\n"
+                else
+                    # No Unbound configuration exists
+                    echo -e "No Unbound configuration found in"
+                    echo -e "$unbound_config_dir"
+                    echo -e "\nCannot remove Unbound configuration, no configuration to remove"
+                fi
+            else
+                # No Unbound configuration directory exists
+                # It is either not there or not where we think it is
+                echo -e "No Unbound configuration directory found at"
+                echo -e "$unbound_config_dir"
+                echo -e "\nCannot remove Unbound configuration, no configuration directory"
+            fi
+        else
+            # A backup directory exists but no archives exist within it
+            title_text="A backup is required to $action_text"
+            action_text="make a backup now"
+            confirm_action
+            backup_config
+            remove_config
+        fi
+    else
+        # No unbound-config backup directory exists
+        title_text="A backup is required to $action_text"
+        action_text="make a backup now"
+        confirm_action
+        backup_config
+        remove_config
+    fi
+}
+
+# Delete a specified unbound-config backup or all unbound-config backups
+delete_backup() {
+    # See if there's any point running at all
+    if [[ -d "$unbound_config_dir-backup" ]]; then
+        # There's an unbound-config backup directory present
+        # Check if it's populated
+        if [[ "$(ls -A $unbound_config_dir-backup)" ]]; then
+            # The --delete-backup flag requires an argument
+            if [[ -z "$2" ]]; then
+                # There wasn't one
+                echo -e "The $1 flag requires a backup ID"
+                echo -e "You can use --list-backups to list possible backup IDs\n"
+                echo -e "Example: unbound-config $1 197001010000"
+                exit 1
+            else
+                # There was one, check it's something we recognise
+                backup_id="$2"
+                if [[ -f "$unbound_config_dir-backup/$backup_id.tar.gz" ]]; then
+                    # We found a matching backup ID
+                    # Make certain we want to delete it
+                    action_text="delete unbound-config backup ID $backup_id"
+                    title_text="This command will $action_text"
+                    confirm_action
+                    echo -e "Deleting unbound-config backup ID $backup_id ..."
+                    rm "$unbound_config_dir-backup/$backup_id.tar.gz"
+                    echo -e "\t- Done"
+                else
+                    if [[ "$backup_id" == "--all" ]]; then
+                        # We got the signal we want to delete everything
+                        # It still needs confirmation
+                        echo -e "[INFO] --all option passed\n"
+                        action_text="delete all unbound-config backups"
+                        title_text="This command will $action_text"
+                        confirm_action
+                        # Yeet
+                        echo -e "Deleting unbound-config backup directory ..."
+                        rm -fr "$unbound_config_dir-backup"
+                        echo -e "\t- Done"
+                    else
+                        # Probably not a valid backup ID and not --all
+                        echo -e "Invalid unbound-config backup ID"
+                        echo -e "Use --list-backups to list possible backup IDs\n"
+                        echo -e "Example: unbound-config $1 197001010000"
+                        exit 0
+                    fi
+                fi
+            fi
+        else
+            # "We ain't found shit!"
+            # Desert-combing Trooper (Tim Russ) - Spaceballs, 1987
+            echo -e "No unbound-config backups found in"
+            echo -e "$unbound_config_dir-backup"
+            # If we need it again we can recreate it
+            echo -e "\nDeleting unbound-config backup directory without confirmation..."
+            rm -fr "$unbound_config_dir-backup"
+            echo -e "\t- Done"
+        fi
+    else
+        # There's nothing to do here
+        echo -e "No unbound-config backup directory found at"
+        echo -e "$unbound_config_dir-backup"
+        echo -e "\nCannot delete backup(s), no backup directory"
+    fi
+}
+
+# List all unbound-config backup IDs found in the backup directgory
+list_backups() {
+    # Check for a backup directory
+    if [[ -d "$unbound_config_dir-backup" ]]; then
+        # A backup directory exists, check if there are any archives
+        if [[ "$(ls -A $unbound_config_dir-backup)" ]]; then
+            # Backup directory is not empty
+            echo -e "Listing backup IDs found in $unbound_config_dir-backup ..."
+            # List the contents of the backup directory
+            echo -e "$(find $unbound_config_dir-backup | sed -e 's!.*/!!' | sed -e 's/\.tar.gz$//')"
+            # Append --all to the list of backup IDs to remind the user
+            # they can use it
+            echo -e "--all"
+            echo -e "\n\t- Done\n"
+        else
+            # Backup directory is empty
+            echo -e "No unbound-config backup IDs found in"
+            echo -e "$unbound_config_dir-backup"
+            echo -e "\nCannot list backup IDs, no backup IDs to list"
+        fi
+    else
+        # No unbound-config backup directory exists
+        echo -e "No unbound-config backup directory found at"
+        echo -e "$unbound_config_dir-backup"
+        echo -e "\nCannot list backup IDs, no backup directory"
+    fi
+}
+
+# Restore a specified unbound-config backup ID
+restore_backup() {
+    # See if there's any point running at all
+    if [[ -d "$unbound_config_dir-backup" ]]; then
+        # There's an unbound-config backup directory present
+        # Check if it's populated
+        if [[ "$(ls -A $unbound_config_dir-backup)" ]]; then
+            # It's not empty, now we can get to work
+            # The --restore-backup flag requires an argument
+            if [[ -z "$2" ]]; then
+                # There wasn't one
+                echo -e "The $1 flag requires a backup ID"
+                echo -e "You can use --list-backups to list possible backup IDs\n"
+                echo -e "Example: unbound-config $1 197001010000"
+                exit 1
+            else
+                # We got an argument
+                # Test the validity of the given argument
+                backup_id="$2"
+                if [[ -f "$unbound_config_dir-backup/$backup_id.tar.gz" ]]; then
+                    # The unbound-config backup directory is not empty
+                    # Make sure we have a destination to restore to
+                    if [[ -d "$unbound_config_dir" ]]; then
+                        # Test for tar before we try use it
+                        package="tar"
+                        test_package
+                        action_text="restore unbound-config backup ID $backup_id"
+                        title_text="This command will $action_text"
+                        confirm_action
+                        echo -e "Removing current Unbound configuration if any exists..."
+                        # If we are restoring a backup, first nuke any current
+                        # config
+                        rm -fr ${unbound_config_dir/*}
+                        echo -e "\t- Done\n"
+                        # Extract the archive to its destination
+                        echo -e "Restoring unbound-config backup ID $backup_id...\n"
+                        # As with backup_config, disable tar default remote
+                        # remote tape drive
+                        # Why is this even the default? Seriously
+                        tar -vzxf "$unbound_config_dir-backup/$backup_id.tar.gz" -C "$unbound_config_dir" --force-local
+                        echo -e "\n\t- Done"
+                    else
+                        # No Unbound configuration directory exists
+                        echo -e "No Unbound configuration directory found at"
+                        echo -e "$unbound_config_dir"
+                        echo -e "\nCannot restore backup, no configuration directory"
+                    fi
+                else
+                    # Probably not a valid backup ID
+                    echo -e "Invalid unbound-config backup ID"
+                    echo -e "Use --list-backups to list possible backup IDs\n"
+                    echo -e "Example: unbound-config $1 197001010000"
+                    exit 0
+                fi
+            fi
+        else
+            # The backup directory is empty
+            echo -e "No unbound-config backup IDs found in"
+            echo -e "$unbound_config_dir-backup"
+            echo -e "\nCannot restore backup, no backup to restore"
+        fi
+    else
+        # No unbound-config backup directory exists
+        echo -e "No unbound-config backup directory found at"
+        echo -e "$unbound_config_dir-backup"
+        echo -e "\nCannot restore backup, no backup directory"
+    fi
+}
+
+# Simple function to show the unbound-config utility script (this) version
+show_version() {
+    # This function not having a comment felt weird
+    echo -e "unbound-config v$version"
+}
+
+# We all need a little help from time to time
+help_function() {
+    echo -e "Usage: unbound-control [OPTION [PARAM]]
+
+Where OPTION is one (1) of
+
+    -b                      Backup the current Unbound configuration to a
+    --backup-config         .tar.gz archive located within
+                            $unbound_config_dir-backup
+
+                            Takes an optional parameter (to be normalised and)
+                            used as the backup ID, IDs containing spaces
+                            must be quoted, e.g. \"my unbound backup\"
+                            The default is a timestamp in the format:
+                            YYYYMMDDHHMM
+
+                            If [--rfc3339] is used as the backup ID an rfc3339
+                            compliant timestamp will be used instead:
+                            YYYY-MM-DDTHH:MM:SS±00:00
+
+    examples:               unbound-config --backup-config \"my unbound backup\"
+                            unbound-config --backup-config --rfc3339
+
+    -c                      Install recommended unbound-config config
+    --config-recommended    fragments:
+                            Base (Required) Buffers, Caches, Hardening,
+                            Libevent, Multithreading, Prefetch, Private
+                            Address Ranges, Verbosity
+
+    -C                      Install and configure a 16MB Redis persistent
+    --configure-cachedb     cache database with an LRU eviction policy for
+                            use with the Unbound cachedb module
+
+                            Your Unbound binaries probably don't support this
+                            but unbound-config Unbound binaries do
+
+    -d                      Download unbound-config Unbound binaries in a
+    --download-unbound      .tar.gz archive to $temp_dir
+
+                            Takes an optional parameter [--force] to remove an
+                            existing binary package before downloading a new
+                            one
+
+    -D ID                   Delete an unbound-config backup with a specified
+    --delete-backup ID      backup ID
+
+                            Use --list-backups to list possible backup IDs
+
+                            The [--all] flag may be provided in place of a
+                            backup ID to delete all unbound-config backups
+
+    examples:               unbound-config --delete-backup my_unbound_backup
+                            unbound-config --delete-backup --all
+
+    -h                      Display this help dialogue
+    --help
+
+    -i                      Install unbound-config unbound binaries built from
+    --install-unbound       Unbound master $unbound_version source:
+                            unbound, unbound-anchor, unbound-checkconf,
+                            unbound-control, unbound-control-setup,
+                            unbound-host
+
+                            Takes an optional parameter [--unbound-only] to
+                            install only the unbound binary
+
+                            Note: legacy unbound-checkconf and unbound-control
+                            may fail on more modern unbound configuration
+                            options
+
+    examples:               unbound-config --install-unbound
+                            unbound-config --install-unbound --unbound-only
+
+    -I                      Download and install the unbound-config script to
+    --install-script        local storage, or update an existing locally
+                            installed copy
+
+    -l                      List possible backup IDs found in
+    --list-backups          $unbound_config_dir-backup
+                            Useful for getting backup IDs for --delete-backup
+                            and --restore-backup
+
+    -r                      Remove the current Unbound configuration
+    --remove-config         A backup is required before removing any existing
+                            configuration, prompts for backup if none exist
+
+    -rh                     Download and install a current root.hints file to
+    --root-hints            the Unbound system directory located at
+                            $root_hints_dir
+                            For use with root-hints.conf or installed
+                            automatically when using --recommended-config
+
+    -R ID                   Restore a backup of your Unbound configuration to
+    --restore-backup ID     the Unbound configuration directory located at
+                            $unbound_config_dir
+
+    example:                unbound-config --restore-backup my_unbound_backup
+
+    -t                      Test the validated resolution capabilities of the
+    --test-unbound          local Unbound installation by querying external
+                            domains with known broken and known good DNSSEC
+                            records
+
+    -T                      Test for errors in the Unbound configuration by
+    --test-config           running unbound-checkconf on all .conf files in
+                            the configuration directory located at
+                            $unbound_config_dir
+
+    -u                      Uninstall any unbound binaries unbound-config may
+    --uninstall-unbound     have installed
+
+    -v                      Displays the unbound-config version
+    --version
+                            Current unbound-config version v$version"
+    exit 0
+}
+
+# Extremely basic service handler function
+# What could go wrong here?
+service_handler() {
+    # A slightly safer bet than assuming systemd will be present
+    package="init-system-helpers"
+    test_package
+    echo -e "Sending $service_action action to $service service ..."
+    service "$service" "$service_action"
+    echo -e "\t- Done\n"
+}
+
+# The ugliest dependency check you'll ever see
+test_package() {
+    # Allow for skipping dependency checks
+    if [[ "$SKIP_DEPENDENCY_CHECKS" == "true" ]]; then
+        echo -e "[INFO] Skipping dependency check for $package\n"
+    else
+        # Extremely ugly way of testing whether or not we can use dpkg-query
+        # to locate dependencies
+        if [[ -n "$(which dpkg-query)" ]]; then
+            package_query="$(dpkg-query -W --showformat='${Status}\n' $package | grep "install ok installed")"
+            if [[ -z "$package_query" ]]; then
+                package_to_install="$package"
+                test_apt="$(dpkg-query -W --showformat='${Status}\n' apt | grep "install ok installed")"
+                if [[ -n "$test_apt" ]]; then
+                    # We think we found apt
+                    # Ask if we can use it to install what we need
+                    action_text="install $package_to_install using apt now"
+                    title_text="Required package $package_to_install not found"
+                    confirm_action
+                    # If we land here we got permission to install using apt
+                    apt install --yes --no-install-recommends "$package_to_install"
+                else
+                    # Something weird is happening, dpkg but no apt
+                    # Let the user figure it out
+                    echo -e "\e[31;1m$package_to_install is not installed\e[0m\n"
+                    echo -e "Install $package_to_install before running unbound-config again"
+                    exit 1
+                fi
+            fi
+        else
+            # At this point support starts getting getting pretty questionable
+            # I'm not saying we only support Debian and Ubuntu derivatives
+            # ...but also, we probably only support Debian and Ubuntu
+            # derivatives
+            echo -e "Can not reliably check for dependencies on this system\n"
+            echo -e "$package is either not installed or not in your \$PATH"
+            echo -e "Ensure $package is available before running unbound-config again\n"
+            echo -e "Set the following environment variable to skip future dependency checks"
+            echo -e "SKIP_DEPENDENCY_CHECKS=\"true\""
+            exit 1
+        fi
+    fi
+}
+
+# Host system architecture test for Unbound binary download and installation
+# Could be trivially expanded later if or when we add more supported platforms
+test_architecture() {
+    # I can't use uname -i here like I normally would because Raspberry Pi
+    # devices may report unknown for this flag which is super helpful
+    host_arch="$(uname -m)"
+    echo -e "Testing host architecture ..."
+    if [[ "$host_arch" == "aarch64" ]] || [[ "$host_arch" == "armv8" ]]; then
+        # Host can probably use aarch64 binaries
+        host_arch="aarch64"
+    else
+        if [[ "$host_arch" == "armhf" ]] || [[ "$host_arch" == "armv7l" ]] || [[ "$host_arch" == "armv6l" ]]; then
+            # Host can probably use armhf binaries
+            host_arch="armhf"
+        else
+            # Not a supported architecture
+            # Tell the user what has happened
+            echo -e "\nIncompatible host architecture"
+            echo -e "Supported host architectures: aarch64 (armv8), armhf (armv6l, armv7l)\n"
+            echo -e "Your host architecture is $host_arch"
+            exit 1
+        fi
+    fi
+    # It's a success if we got this far
+    echo -e "\t- Done\n"
+}
+
+# Deceptively fast function which parses all .conf files in the Unbound
+# configuration directory using the host's unbound-checkconf
+# Checks the entire configuration directory, no need for config files
+# or config file fragments to reference each other, neither explicitly
+# nor via wildcard
+test_config() {
+    package="unbound"
+    test_package
+    # Attempt to locate unbound-checkconf
+    if [[ -n "$(which unbound-checkconf)" ]]; then
+        # Now the Unbound configuration directory
+        if [[ -d "$unbound_config_dir" ]]; then
+            # Are there actually any config files to check?
+            # This redundancy helps with verbose error descriptions
+            if [[ "$(ls -A $unbound_config_dir)" ]]; then
+                # Fun fact:
+                # This is the first for loop in this script
+                for config_file in "$unbound_config_dir/*.conf"; do
+                    unbound-checkconf "$config_file"
+                done
+            else
+                # There's no configuration files where we expected to find some
+                echo -e "No Unbound configuration found in"
+                echo -e "$unbound_config_dir"
+                echo -e "\nCannot check Unbound configuration, no configuration to check"
+            fi
+        else
+            # No configuration directory or it's not where we think it is
+            echo -e "No Unbound configuration directory exists at"
+            echo -e "$unbound_config_dir"
+            echo -e "\nCannot check Unbound configuration, no configuration directory"
+        fi
+    else
+        # We rely on unbound-checkconf, and we can't find it
+        echo -e "unbound-checkconf is either not installed or not in your \$PATH"
+        echo -e "Ensure unbound-checkconf is available before running unbound-config again"
+        exit 1
+    fi
+}
+
+# Test external resolution and DNSSEC capabilities in...well, two, goes
+test_unbound() {
+    # We need dig for this
+    package="dnsutils"
+    test_package
+    # Use the ubiquitous DNSSEC test domains located at *.verteiltesysteme.net
+    dnssec_sigfail="$(dig sigfail.verteiltesysteme.net @127.0.0.1 -p 5335 | grep "SERVFAIL" )"
+    dnssec_sigok="$(dig sigok.verteiltesysteme.net @127.0.0.1 -p 5335 | grep "NOERROR" )"
+    #  Test a deliberately broken record
+    echo -e "Testing sigfail.verteiltesysteme.net ..."
+    if [[ -n "$dnssec_sigfail" ]]; then
+        # User's may see SERVFAIL and assume it's a bad thing, so reassure them
+        # that it's what we're looking for with a success message
+        echo -e "Success"
+        echo -e "SERVFAIL response received\n"
+    else
+        echo -e "Failure"
+        echo -e "SERVFAIL response expected but not received"
+    fi
+    echo -e "\t- Done\n"
+    #  Test a known good record
+    echo -e "Testing sigok.verteiltesysteme.net ..."
+    if [[ -n "$dnssec_sigok" ]]; then
+        # This result is less ambiguous, but we should have consistency in our
+        # output
+        echo -e "Success"
+        echo -e "NOERROR response received\n"
+    else
+        echo -e "Failure"
+        echo -e "NOERROR response expected but not received"
+    fi
+    echo -e "\t- Done\n"
+}
+
+# Various services may be doing something weird with /etc/resolv.conf
+# We won't try and do anything about it, yet at least, but we should
+# warn the user if resolv.conf may be doing something strange
+test_resolvconf() {
+    # Test for service before we try and use it
+    package="init-system-helpers"
+    test_package
+    # Test resolvconf service status
+    # It may do weird stuff when Unbound is present
+    # This behavious was present in bullseye and lesser, but it pointed to a
+    # unbound congifuration in /var/unbound/ which would not have existed
+    resolvconf_check="$(service resolvconf status | grep "Active: active" )"
+    if [[ -n "$resolvconf_check" ]]; then
+        show_resolvconf_warning="true"
+        resolvconf_warning="resolvconf service status: active\n"
+    fi
+    # Test systemd-resolved service status, may also do weird stuff
+    systemd_resolved_check="$(service systemd-resolved status | grep "Active: active" )"    
+    if [[ -n "$systemd_resolved_check" ]]; then
+        show_resolvconf_warning="true"
+        resolved_warning="resolved service status: active\n"
+    fi
+    # See if we should warn the user about it
+    if [[ "$show_resolvconf_warning" == "true" ]]; then
+        # We should, so we will
+        title_text="Possible local resolution conflict detected"
+        # Should format well when one or more services we test for are running
+        # May need to override $height locally if we test for more cases later
+        message_text="A possible conflict with a resolv.conf related service exists\n\n"$resolvconf_warning""$resolved_warning"\nThis may cause unintended operation"
+        message_box
+    fi
+}
+
+# Install unbound-config recommended configuration fragments
+config_recommended() {
+    # We need to know this for later
+    test_cores="$(grep -c ^processor /proc/cpuinfo)"
+    # Test if it even makes any sense to install this config
+    package="unbound"
+    test_package
+    # libevent is also required
+    package="libevent-dev"
+    test_package
+    package="wget"
+    test_package
+    action_text="install a recommended Unbound configuration"
+    title_text="This command will $action_text"
+    confirm_action
+    # Backup first
+    backup_config
+    # Remove existing config
+    remove_config
+    #Install required unbound-config base config
+    echo -e "Installing base.conf ..."
+    wget -q --show-progress "$config_repo_path/base.conf" -P "$unbound_config_dir"
+    echo -e "\t- Done\n"
+    # Install recommended unbound-config config fragments
+    echo -e "Installing buffers.conf ..."
+    wget -q --show-progress "$config_repo_path/buffers.conf" -P "$unbound_config_dir"
+    echo -e "\t- Done\n"
+    echo -e "Installing caches.conf ..."
+    wget -q --show-progress "$config_repo_path/caches.conf" -P "$unbound_config_dir"
+    echo -e "\t- Done\n"
+    echo -e "Installing caps-for-id.conf ..."
+    wget -q --show-progress "$config_repo_path/caps-for-id.conf" -P "$unbound_config_dir"
+    echo -e "\t- Done\n"
+    echo -e "Installing hardening.conf ..."
+    wget -q --show-progress "$config_repo_path/hardening.conf" -P "$unbound_config_dir"
+    echo -e "\t- Done\n"
+    echo -e "Installing libevent.conf ..."
+    wget -q --show-progress "$config_repo_path/libevent.conf" -P "$unbound_config_dir"
+    echo -e "\t- Done\n"
+    # Test CPU cores to see if we should enable multithreading
+    echo -e "Determining number of CPU cores ..."
+    echo -e "\t- $test_cores CPU cores detected\n"
+    if [[ "$test_cores" -gt "1" ]]; then
+        # Thread count must be divisible by two
+        if [[ $(( "test_cores" % 2 )) -eq "0" ]]; then
+            thread_count="$test_cores"
+        else
+            thread_count="$(( "$test_cores" - 1 ))"
+        fi
+        echo -e "Installing multithreading.conf ..."
+        wget -q --show-progress "$config_repo_path/multithreading.conf" -P "$unbound_config_dir"
+        echo -e "\t- Done\n"
+        # Due to diminishing returns, set a maximum of 16 cache slabs
+        # Slab count must be a power of two
+        if [[ "$thread_count" -ge "16" ]]; then
+             # Sixteen or greater threads
+             # Not as uncommon as you'd think
+             slab_count="16"
+             echo -e "Adjusting cache slab count ..."
+             sed -i s"/slabs: 4/slabs: $slab_count/"g "$unbound_config_dir/caches.conf"
+             echo -e "\t- Done"
+             echo -e "Number of cache slabs: $slab_count\n"
+             echo -e "Adjusting thread count ..."
+             sed -i s"/threads: 4/threads: $thread_count/"g "$unbound_config_dir/multithreading.conf"
+             echo -e "\t- Done"
+             echo -e "Number of threads: $thread_count\n"
+        else
+            if [[ "$thread_count" -ge "8" ]]; then
+                # Eight or greater threads, less than sixteen threads
+                # The closest power of two is eight
+                slab_count="8"
+                echo -e "Adjusting cache slab count ..."
+                sed -i s"/slabs: 4/slabs: $slab_count/"g "$unbound_config_dir/caches.conf"
+                echo -e "\t- Done"
+                echo -e "Number of cache slabs: $slab_count\n"
+                echo -e "Adjusting thread count ..."
+                sed -i s"/threads: 4/threads: $thread_count/"g "$unbound_config_dir/multithreading.conf"
+                echo -e "\t- Done"
+                echo -e "Number of threads: $thread_count\n"
+            else
+                if [[ "$thread_count" -ge "4" ]]; then
+                    # Four or greater threads, less than eight threads
+                    # The closest power of two is the default, four
+                    echo -e "[INFO] Using unbound-config default 4 cache slabs\n"
+                    if [[ "$test_cores" -eq "4" ]]; then
+                        # Exactly four threads
+                        # unbound-config default, no need to change it
+                        echo -e "[INFO] Using unbound-config default 4 threads\n"
+                    else
+                        # Greater than four threads
+                        echo -e "Adjusting thread count ..."
+                        sed -i s"/threads: 4/threads: $thread_count/"g "$unbound_config_dir/multithreading.conf"
+                        echo -e "\t- Done"
+                        echo -e "Number of threads: $thread_count\n"
+                    fi
+                else
+                    # Less than four threads
+                    slab_count="2"
+                    echo -e "Adjusting cache slab count ..."
+                    sed -i s"/slabs: 4/slabs: $slab_count/"g "$unbound_config_dir/caches.conf"
+                    echo -e "\t- Done"
+                    echo -e "Number of cache slabs: $slab_count\n"
+                    echo -e "Adjusting thread count ..."
+                    sed -i s"/threads: 4/threads: $thread_count/"g "$unbound_config_dir/multithreading.conf"
+                    echo -e "\t- Done"
+                    echo -e "Number of threads: $thread_count\n"
+                fi
+            fi
+        fi
+    else
+        # One (or undetectable) thread(s), err on the side of caution
+        slab_count="2"
+        echo -e "Skipping multithreading.conf ...\n"
+        echo -e "Adjusting cache slab count ..."
+        sed -i s"/slabs: 4/slabs: $slab_count/"g "$unbound_config_dir/caches.conf"
+        echo -e "\t- Done"
+        echo -e "Number of cache slabs: $slab_count\n"
+    fi
+    echo -e "Installing prefetch.conf ..."
+    wget -q --show-progress "$config_repo_path/prefetch.conf" -P "$unbound_config_dir"
+    echo -e "\t- Done\n"
+    echo -e "Installing private-ranges.conf ..."
+    wget -q --show-progress "$config_repo_path/private-ranges.conf" -P "$unbound_config_dir"
+    echo -e "\t- Done\n"
+    install_root_hints
+    if [[ -f "$root_hints_dir/root.hints" ]]; then
+        echo -e "Installing root-hints.conf ..."
+        wget -q --show-progress "$config_repo_path/root-hints.conf" -P "$unbound_config_dir"
+        echo -e "\t- Done\n"
+    else
+        echo -e "Skipping root-hints.conf ...\n"
+    fi
+    echo -e "Installing verbosity.conf ..."
+    wget -q --show-progress "$config_repo_path/verbosity.conf" -P "$unbound_config_dir"
+    echo -e "\t- Done\n"
+    service_action="restart"
+    service="unbound"
+    service_handler
+    test_resolvconf
+}
+
+# Download unbound-config .tar.gz packaged Unbound binaries
+download_unbound() {
+    # Add a parameter to allow forcing download of an unbound binary package
+    # even if a current one already exists in the target directory
+    if [[ "$2" == "--force" ]]; then
+        echo -e "[INFO] --force option passed\n"
+        if [[ -f "$temp_dir/unbound-$unbound_version.tar.gz" ]]; then
+            echo -e "Removing existing unbound-config archive ..."
+            rm "$temp_dir/unbound-$unbound_version.tar.gz"
+            echo -e "\t- Done\n"
+        fi
+    fi
+    test_architecture
+    package="wget"
+    test_package
+    # Use test_arch result to determine which package to download
+    echo -e "Downloading unbound-config Unbound binaries for $host_arch ..."
+    # Download if newer or nonexisting
+    wget -c -nv -N -q --show-progress "$binary_repo_path/$host_arch/unbound-$unbound_version.tar.gz" -P "$temp_dir"
+    echo -e "\t- Done\n"
+    echo -e "Extracting unbound-$unbound_version.tar.gz to $temp_dir ...\n"
+    tar -vzxf $temp_dir/unbound-$unbound_version.tar.gz -C $temp_dir
+    echo -e "\n\t- Done\n"
+}
+
+# Install and configure a small Redis database with a Least Recently Used
+# eviction policy for use with Unbound's cachedb module to provide a
+# persistent disk backed cache
+# This is essentially serve-expired-records on steroids
+configure_cachedb() {
+    # Confirm we really want to do this
+    action_text="install and configure a Redis cachedb backend"
+    title_text="This command will $action_text"
+    confirm_action
+    package="unbound"
+    test_package
+    # Test if we know where to configure Unbound
+    if [[ -d "$unbound_config_dir" ]]; then
+        package="wget"
+        test_package
+        # Install Redis cachedb dependencies
+        package="redis-server"
+        test_package
+        package="libhiredis-dev"
+        test_package
+        # We should be able to find the Redis configuration here
+        redis_conf="/etc/redis/redis.conf"
+        # We still need to test for it though
+        if [[ -f "$redis_conf" ]]; then
+            # We know where to configure both Unbound and Redis
+            # so lets try
+            package="wget"
+            test_package
+            # Install Unbound module config
+            echo -e "Installing module-config.conf ..."
+            wget -q --show-progress "$config_repo_path/module-config.conf" -P "$unbound_config_dir"
+            echo -e "\t- Done\n"
+            # Install our Redis configuration
+            echo -e "Installing redis.conf ..."
+            wget -q --show-progress "$config_repo_path/redis.conf" -P "$unbound_config_dir"
+            echo -e "\t- Done\n"
+            # Configure the redis-server insstance
+            echo -e "Configuring the Redis server ..."
+            # Make Redis provide a single small persistent cache database
+            sed -i '/databases 16/s/^/#/g' "$redis_conf"
+            sed -i '/#databases 16/a databases 1' "$redis_conf"
+            # No need for this
+            sed -i '/always-show-logo yes/s/^/#/g' "$redis_conf"
+            sed -i '/#always-show-logo yes/a always-show-logo no' "$redis_conf"
+            # It's not a tragedy if a bgsave fails
+            sed -i '/stop-writes-on-bgsave-error yes/s/^/#/g' "$redis_conf"
+            sed -i '/#stop-writes-on-bgsave-error yes/a stop-writes-on-bgsave-error no' "$redis_conf"
+            # Not resource intensive at all
+            sed -i '/rdbcompression yes/s/^/#/g' "$redis_conf"
+            sed -i '/#rdbcompression yes/a rdbcompression no' "$redis_conf"
+            # 16M allows for approximately 20K key entries
+            sed -i '/# maxmemory <bytes>/a maxmemory 16M' "$redis_conf"
+            # Evict keys on a Least Recently Used basis when necessary
+            sed -i '/# maxmemory-policy noeviction/a maxmemory-policy allkeys-lru' "$redis_conf"
+            # Unnecessaryily large for our needs
+            sed -i '/slowlog-max-len 128/s/^/#/g' "$redis_conf"
+            sed -i '/#slowlog-max-len 128/a slowlog-max-len 16' "$redis_conf"
+            # Logging is very disk intensive
+            sed -i '/logfile \/var\/log\/redis\/redis-server.log/s/^/#/g' "$redis_conf"
+            echo -e "\t- Done\n"
+            # Restart both Redis and Unbound services to pick up our changes
+            service_action="restart"
+            # Redis first
+            service="redis"
+            service_handler
+            # Now unbound
+            service="unbound"
+            service_handler
+        else
+            # No redis server configuration found
+            echo -e "No Redis configuration exists at"
+            echo -e "$redis_conf"
+            echo -e "\nCannot configure cachedb, no Redis configuration"
+        fi
+    else
+        # There is no Unbound configuartion directory
+        echo -e "No Unbound configuration directory exists at"
+        echo -e "$unbound_config_dir"
+        echo -e "\nCannot configure cachedb, no configuration directory"
+    fi
+}
+
+# Installs unbound-config to the host system in either the /usr/local/bin or
+# ~/bin directories
+install_script() {
+    # We need to figure out the actual user if we were called with sudo
+    if [[ -n "$SUDO_USER" ]]; then
+        # $SUDO_USER should exist in all vaguely current bash(-alikes)
+        script_user="$SUDO_USER"
+    else
+        # As above
+        script_user="$USER"
+    fi
+    system_bin_dir="/usr/local/bin"
+    user_bin_dir="/home/$script_user/bin"
+    # Prefer /usr/local/bin
+    if [[ -d "$system_bin_dir" ]]; then
+        script_dir="$system_bin_dir"
+    else
+        # But the user's personal bin sirectory will do
+        if [[ ! -d "$user_bin_dir" ]]; then
+            action_text="create a personal bin directory"
+            title_text="This command will $action_text"
+            confirm_action
+            # Even if we have to create it
+            mkdir "$user_bin_dir"
+            chown "$script_user":"$script_user" "$user_bin_dir"
+        fi
+        script_dir="$user_bin_dir"
+        # We need to warn if the personal bin isn't in $PATH
+        if [[ ":$PATH:" == *":$script_dir:"* ]]; then
+             title_text="Personal bin directory created"
+             message_text="Please ensure the personal bin directory $script_dir exists in the system \$PATH.\n\nYou can add this path to your system \$PATH temporarily or as required using the following command:\nexport PATH=$script_dir:\$PATH"
+             message_box
+        fi
+    fi
+    package="wget"
+    test_package
+    # Action text for installing and updating locally installed unbound-config
+    if [[ -f "$script_dir/unbound-config" ]]; then
+        action_text="update the locally installed unbound-config"
+    else
+        action_text="install unbound-config locally"
+    fi
+    title_text="This command will $action_text"
+    confirm_action
+    echo -e "Downloading and installing unbound-config ...\n"
+    # Always pull the latest unbound-config from git
+    wget -nv -q --show-progress "$script_repo_path/unbound-config" -O "$script_dir/unbound-config"
+    # Set owner:group for unbound-config if we install to the user's
+    # /home/$USER/bin directory
+    if [[ "$script_dir" == "$user_bin_dir" ]]; then
+    chown "$script_user":"$script_user" "$script_dir/unbound-config"
+    fi
+    # Make sure the installed unbound-config script is executable
+    if [[ ! -x "$script_dir/unbound-config" ]]; then
+        chmod +x "$script_dir/unbound-config"
+    fi
+    echo -e "\n\t- Done\n"
+}
+
+# Install root.hints
+install_root_hints() {
+    package="unbound"
+    test_package
+    package="wget"
+    test_package
+    echo -e "Downloading and installing root.hints file...\n"
+    # Check if we know where to put it
+    if [[ -d "$root_hints_dir" ]]; then
+        # Download straight to stdout then pipe to location with tee
+        wget -q --show-progress https://www.internic.net/domain/named.root -O - | tee "$root_hints_dir/root.hints"
+        echo -e "\n\t- Done\n"
+    else
+        # We'd like to install it but we don't know where to put it
+        echo -e "No root.hints directory exists at"
+        echo -e "$root_hints_dir"
+        echo -e "\nCannot install root.hints, no root.hints directory"
+    fi
+}
+
+# Install unbound-config Unbound binaries
+install_unbound() {
+    # Use the system package manager's setup of Unbound
+    # Seems pretty counterintuitive I know, but we use the system package
+    # manager's init system for unbound_config binaries
+    action_text="install unbound-config Unbound binaries"
+    title_text="Before you $action_text"
+    message_text="It is safe, but not necessarily recommended to replace the system unbound binaries with those provided. Any updates system updates to unbound packages will remove the custom unbound binaries."
+    message_box
+    package="unbound"
+    test_package
+    # Since there is a non-zero possibility we might get the chicken before the
+    # egg, ensure a binary package exists
+    # download_unbound tests the architecture so we kill two, uh... chickens
+    download_unbound
+    title_text="This command will $action_text"
+    confirm_action
+    service_action="stop"
+    service="unbound"
+    service_handler
+    echo -e "Installing unbound ..."
+    cp "$temp_dir/unbound" "$unbound_dir"
+    echo -e "\t- Done\n"
+    # It's possible the user is only interested in the unbound binary
+    # so start the service and exit now if --unbound-only was passed
+    if [[ "$2" == "--unbound-only" ]]; then
+        echo -e "[INFO] --unbound-only option passed\n"
+        service_action="start"
+        service_handler
+        exit 0
+    fi
+    echo -e "Installing unbound-anchor ..."
+    cp "$temp_dir/unbound-anchor" "$unbound_dir"
+    echo -e "\t- Done\n"
+    echo -e "Installing unbound-checkconf ..."
+    cp "$temp_dir/unbound-checkconf" "$unbound_dir"
+    echo -e "\t- Done\n"
+    echo -e "Installing unbound-control ..."
+    cp "$temp_dir/unbound-control" "$unbound_dir"
+    echo -e "\t- Done\n"
+    echo -e "Installing unbound-control-setup ..."
+    cp "$temp_dir/unbound-control-setup" "$unbound_dir"
+    echo -e "\t- Done\n"
+    echo -e "Installing unbound-host ..."
+    cp "$temp_dir/unbound-host" "$unbound_host_dir"
+    echo -e "\t- Done\n"
+    service_action="start"
+    service_handler
+    test_resolvconf
+}
+
+# Uninstall unbound-config Unbound binaries
+uninstall_unbound() {
+    package="unbound"
+    test_package
+    action_text="uninstall unbound-config Unbound binaries"
+    title_text="This command will $action_text"
+    confirm_action
+    service_action="stop"
+    service="unbound"
+    service_handler
+    # Test if the targets exist before trying to remove them to
+    # avoid noisy failures
+    if [[ -f "$unbound_dir/unbound" ]]; then
+        echo -e "Uninstalling unbound ..."
+        rm "$unbound_dir/unbound"
+        echo -e "\t- Done\n"
+    fi
+    if [[ -f "$unbound_dir/unbound-anchor" ]]; then
+        echo -e "Uninstalling unbound-anchor ..."
+        rm "$unbound_dir/unbound-anchor"
+        echo -e "\t- Done\n"
+    fi
+    if [[ -f "$unbound_dir/unbound-checkconf" ]]; then
+        echo -e "Uninstalling unbound-checkconf ..."
+        rm "$unbound_dir/unbound-checkconf"
+        echo -e "\t- Done\n"
+    fi
+    if [[ -f "$unbound_dir/unbound-control" ]]; then
+        echo -e "Uninstalling unbound-control ..."
+        rm "$unbound_dir/unbound-control"
+        echo -e "\t- Done\n"
+    fi
+    if [[ -f "$unbound_dir/unbound-control-setup" ]]; then
+        echo -e "Uninstalling unbound-control-setup ..."
+        rm "$unbound_dir/unbound-control-setup"
+        echo -e "\t- Done\n"
+    fi
+    if [[ -f "$unbound_host_dir/unbound" ]]; then
+        echo -e "Uninstalling unbound-host ..."
+        rm "$unbound_host_dir/unbound-host"
+        echo -e "\t- Done\n"
+    fi
+    # Remind the user that they need to finish the job
+    # All methods of testing if it is actually an unbound-config binary or
+    # from the system package manager are annoying or unreliable and annoying
+    title_text="After you $action_text"
+    message_text="Reinstall or uninstall Unbound using your system package manager\n\nExample:\nsudo apt install --reinstall unbound\nsudo apt remove unbound*"
+    message_box
+}
+
+# The current user needs to be root or have access to sudo
+if [[ ! "$EUID" -eq "0" ]];then
+    # Make sure sudo is installed
+    package="sudo"
+    test_package
+    if [[ -x "$(command -v sudo)" ]]; then
+        # Preserve the environment when re-running with sudo
+        exec sudo -E bash "$0" "$@"
+        exit "$?"
+    else
+        echo -e "\e[31;1m\t- Run unbound-config as root or install sudo\e[0m\n"
+        echo -e "\t- Aborting"
+        exit 1
+    fi
+else
+    # Only print the header once, and only if we're actually doing something
+    # substantial
+    # Don't print header for help functions, version functions, or the mini
+    # help function
+    if [[ -n "$1" ]]; then
+        # There's almost certainly a better way to do this
+        if [[ "$1" != "-h" ]] && [[ "$1" != "help" ]] && [[ "$1" != "--help" ]]; then
+            if [[ "$1" != "-v" ]] && [[ "$1" != "version" ]] && [[ "$1" != "--version" ]]; then
+                obnoxious_header
+            fi
+        fi
+    fi
+fi
+
+# Define the options unbound-config accepts and assign their function
+case "${1}" in
+    # These functions process arguments themselves
+    "-b"  | "--backup-config"       ) backup_config "$@" ;;
+    "-d"  | "--download-unbound"    ) download_unbound "$@" ;;
+    "-D"  | "--delete-backup"       ) delete_backup "$@" ;;
+    "-i"  | "--install-unbound"     ) install_unbound "$@" ;;
+    "-R"  | "--restore-backup"      ) restore_backup "$@" ;;
+    # These ones don't
+    "-c"  | "--config-recommended"  ) config_recommended ;;
+    "-C"  | "--configure-cachedb"   ) configure_cachedb ;;
+    "-h"  | "--help"                ) help_function ;;
+    "-I"  | "--install-script"      ) install_script ;;
+    "-l"  | "--list-backups"        ) list_backups  ;;
+    "-r"  | "--remove-config"       ) remove_config ;;
+    "-rh" | "--root-hints"          ) install_root_hints ;;
+    "-t"  | "--test-unbound"        ) test_unbound  ;;
+    "-T"  | "--test-config"         ) test_config ;;
+    "-u"  | "--uninstall-unbound"   ) uninstall_unbound ;;
+    "-v"  | "--version"             ) show_version ;;
+esac
+
+# Only print full help information if a help option is passed
+if [[ -z "$1" ]]; then
+    # "Yo dawg, I heard you liked help. So we pimped your help, with some help!"
+    # Xzibit (Alvin Nathaniel Joiner) - Probably never
+    echo -e "unbound-config v$version requires one or more flags to operate"
+    echo -e "Use 'unbound-config --help' for detailed help information"
+    exit 0
+fi
